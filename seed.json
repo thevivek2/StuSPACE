@@ -1,0 +1,108 @@
+{
+  "_note": "Starting data. Used on first start and after \"Delete all data\". Edit freely.",
+  "configs": {
+    "otp.static.enabled": true,
+    "otp.static.value": "2222",
+    "otp.ttlMinutes": 10,
+    "video.maxMB": 5,
+    "video.maxSeconds": 300,
+    "video.program.maxMB": 100,
+    "photo.maxMB": 5,
+    "site.programName": "StuSPACE",
+    "site.baseUrl": "",
+    "site.tagline": "Giving Big Opportunity to Shine",
+    "site.heroTitle": "Giving Big Opportunity to Shine",
+    "site.heroText": "Send us your talk or debate on the topic we ask. We review every student video first, then publish the best to the public on YouTube and here on the platform.",
+    "site.playerTitle": "StuSPACE",
+    "letter.subject": "Welcome to the {{program}}",
+    "letter.body": "Thank you for registering {{school}} with {{program}}. We are delighted to welcome you and to give you a big opportunity to shine.\n\nYour registration is confirmed and your {{plan}} plan is active. Keep the registration number above for your records.\n\nWhat happens next: we will email {{email}} a topic for a short talk or debate. Verify with a one-time code, record your video, and our reviewers will check it first. Approved videos are published to the public on YouTube and on our platform.\n\nThank you for being part of {{program}}.",
+    "letter.signoff": "Warm regards,\nThe StuSPACE Team",
+    "site.whoWeAre": "StuSPACE gives students a big opportunity to shine. Students send a talk or debate video on a topic we ask, our team reviews it first, and the best videos are published to the public through our YouTube channel and on the platform.",
+    "site.privacy": "Everything on StuSPACE is confidential and fair. What you share with us is kept private, every video is reviewed by our team before it is used, and every student is treated equally, whatever their school or background.\n# Information we collect\nWe collect the details you give us when you register (name, school, address, email and, if you choose, a phone number) and the videos you record when you answer a topic.\n# How we use it\nWe use your email to verify you with one-time codes and to send you topics and updates. Your videos are reviewed by our team. Only videos that pass review are published, on our YouTube channel and on this platform, and only with the consent of the student and their parent or guardian.\n# Fair and confidential review\nReviewers use the same checklist for every video. Videos that are not published stay private and are visible only to the review team. Review decisions and changes to records are logged so they can be checked later.\n# Sharing\nWe never sell your personal information. We share it only with service providers that help us run the platform (such as email, SMS and video hosting) and when the law requires it.\n# Security and retention\nAccess is protected by one-time codes, and administrators can only see what they need. We keep records and videos only as long as needed for the program, then delete them. You can ask us to delete your data at any time.\n# Your rights\nYou can ask to see, correct or delete your information, or withdraw consent for a published video, by contacting us using the details in \"Who we are\".\n# Changes\nWe may update this policy from time to time. The latest version is always available from the footer of this site.",
+    "contact.email": "support@stuspace.example",
+    "contact.phone": "+977-1-0000000",
+    "contact.address": "Kathmandu, Nepal",
+    "insight.repeatDays": 90,
+    "insight.questions": "Talk: What does it mean to shine, and how will you do it?\nDebate: Should homework be replaced by projects?\nTalk: The best lesson you ever learned outside the classroom\nDebate: Is social media good for students?\nTalk: One idea that would make your school better",
+    "fund.defaultReason": "Support for school improvement",
+    "sms.enabled": false,
+    "sms.sandbox": true,
+    "sms.baseUrl": "https://api.sparrowsms.com/v2/sms/",
+    "sms.sandboxUrl": "",
+    "sms.token": "",
+    "sms.from": "InfoSMS",
+    "sms.notify": true,
+    "youtube.enabled": false,
+    "youtube.clientId": "",
+    "youtube.clientSecret": "",
+    "youtube.refreshToken": "",
+    "youtube.privacy": "public",
+    "youtube.categoryId": "27",
+    "youtube.titleTemplate": "{{school}} · {{program}}",
+    "youtube.tokenUrl": "https://oauth2.googleapis.com/token",
+    "youtube.uploadUrl": "https://www.googleapis.com/upload/youtube/v3/videos",
+    "smtp.enabled": false,
+    "smtp.host": "smtp.gmail.com",
+    "smtp.port": 587,
+    "smtp.secure": false,
+    "smtp.user": "",
+    "smtp.pass": "",
+    "smtp.from": "",
+    "log.level": "info",
+    "admin.default.name": "Vivek Adhikari",
+    "admin.default.phone": "9841527953",
+    "admin.default.email": "thevivek2@gmail.com"
+  },
+  "admins": [
+    {
+      "name": "Vivek Adhikari",
+      "phone": "9841527953",
+      "email": "thevivek2@gmail.com"
+    }
+  ],
+  "plans": [
+    {
+      "id": "plan_free",
+      "name": "Free",
+      "price": 0,
+      "description": "Free registration\nDirectory listing\nEligible for talk and debate topics\nCharges may apply on renewal",
+      "status": "active"
+    }
+  ],
+  "templates": [
+    {
+      "key": "insight_request",
+      "name": "Talk / debate request email",
+      "subject": "Your topic from {{program}}: time to shine",
+      "heading": "Hi {{name}},",
+      "body": "You have been selected by {{program}} to give a talk or debate on behalf of {{school}}. We choose members at random, and the best videos are published to the public on YouTube and on our platform.\n\nYour topic:\n\n{{question}}\n\nUse the button below, verify with a one-time code and record your video. Our reviewers watch every video before it is published.",
+      "buttonText": "Verify and record your video",
+      "footer": "{{program}} · Giving Big Opportunity to Shine",
+      "showLogo": true,
+      "showDate": true,
+      "version": 1
+    },
+    {
+      "key": "welcome",
+      "name": "Successful registration email",
+      "subject": "Welcome to {{program}}",
+      "heading": "Welcome, {{name}}!",
+      "body": "Your {{plan}} registration for {{school}} is confirmed. You are now part of {{program}}, a platform that gives students a big opportunity to shine.\n\nWhat happens next:\n\n1. We email you a topic for a short talk or debate.\n2. Verify with a one-time code and record your video.\n3. We review it first, then publish the best to YouTube and on our platform.",
+      "buttonText": "",
+      "footer": "{{program}}",
+      "showLogo": true,
+      "showDate": true,
+      "version": 1
+    }
+  ],
+  "funds": [
+    {
+      "name": "Fund 1",
+      "perPeriod": 5,
+      "amount": 500,
+      "durationDays": 30,
+      "reason": "Support for school improvement",
+      "status": "active"
+    }
+  ]
+}

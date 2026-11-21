@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Directory · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="dir">
+<main><div class="pagehead"><h1>Directory</h1><p>Search or pick a filter to see schools. Click a row for details.</p></div><div class="card">
+<div class="toolbar"><input id="q" placeholder="Search by name, school, email, phone…"><select id="plan" style="max-width:190px"><option value="">Filter by plan…</option><option value="all">All schools</option></select><a class="btn" href="/#register" target="_top">+ Register</a></div>
+<div class="table-wrap" id="wrap" hidden><table><thead><tr><th></th><th>Name</th><th>School</th><th>Contact</th><th>Plan</th></tr></thead><tbody id="rows"></tbody></table></div>
+<p id="empty" style="color:#6b6b6b">Nothing is shown until you search or choose a filter.</p></div></main>
+<script src="common.js"></script><script>
+let t;
+api('/api/plans').then(l=>{plan.insertAdjacentHTML('beforeend',l.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join(''))});
+async function load(){const q=$('#q').value.trim(),pl=$('#plan').value;
+ if(!q&&!pl){wrap.hidden=true;empty.style.display='block';empty.textContent='Nothing is shown until you search or choose a filter.';rows.innerHTML='';return}
+ let list=await api('/api/principals?q='+encodeURIComponent(q));if(pl&&pl!=='all')list=list.filter(p=>p.plan===pl);
+ wrap.hidden=!list.length;empty.style.display=list.length?'none':'block';empty.textContent='No schools found.';
+ rows.innerHTML=list.map(p=>`<tr class="click" data-id="${p.id}"><td>${p.photo?`<img class="avatar" style="width:34px;height:34px" src="${esc(p.photo)}">`:`<div class="avatar" style="width:34px;height:34px;font-size:12px">${esc(initials(p.name))}</div>`}</td>
+<td><b>${esc(p.name)}</b><br><small>${esc(p.address)}</small></td><td><b>${esc(p.school.name)}</b><br><small>${esc(p.school.address)}</small></td>
+<td>${esc(p.email)}<br>${esc(p.phone)}</td><td><span class="badge ${p.planPrice>0?'Paid':'Free'}">${esc(p.plan)}</span></td></tr>`).join('')}
+document.addEventListener('click',e=>{const r=e.target.closest('tr.click');if(r&&!e.target.closest('a'))location.href='/school.html?id='+r.dataset.id});
+q.oninput=()=>{clearTimeout(t);t=setTimeout(load,200)};plan.onchange=load;load();
+</script></body></html>

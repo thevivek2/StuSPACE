@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Register · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body>
+<main><div class="card reg"><div class="rhead"><h1>Register</h1><div class="steps"><div class="on">1 · Plan</div><div>2 · You &amp; school</div><div>3 · Verify</div><div>4 · Letter</div></div></div><div id="out"></div>
+<form id="f">
+<section data-s="1"><div class="plans" id="plans"><div class="loader"><div class="spin"></div></div></div>
+<input type="hidden" name="planId" required><br><button type="button" class="nx">Continue →</button></section>
+<section data-s="2" hidden><div class="row3">
+<div><label>Full name</label><input name="name" required></div><div><label>Email</label><input name="email" type="email" required></div><div><label>Phone (optional)</label><input name="phone" placeholder="+977 98…"></div>
+<div><label>Home address</label><input name="address" required></div><div><label>School name</label><input name="schoolName" required></div><div><label>School address</label><input name="schoolAddress" required></div>
+<div><label>Board / type (optional)</label><input name="schoolBoard"></div><div><label>Students (optional)</label><input name="schoolStudents" type="number" min="0"></div><div><label>LinkedIn URL (optional)</label><input name="linkedin" type="url" placeholder="https://linkedin.com/in/…"></div>
+<div><label>Photo</label><input name="photo" type="file" accept="image/*"></div><div></div><div class="btns"><button type="button" class="alt bk">← Back</button> <button type="button" class="nx">Continue →</button></div></div></section>
+<section data-s="3" hidden><p>Plan: <b id="sPlan"></b></p>
+<div id="out3"></div><label>One-time code</label><input name="otp" class="otp" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="one-time-code" required>
+<p class="small">We send the one-time code to your email.</p>
+<button type="button" class="alt bk">← Back</button> <button type="submit">Complete registration</button></section>
+<section data-s="4" hidden><div class="lbar"><b>Your welcome letter</b><span><button type="button" id="dl">Download letter</button> <button type="button" class="alt" id="pr">Print / Save as PDF</button> <button type="button" class="alt" id="done">Done</button></span></div><div id="letter" class="letterwrap"></div></section>
+</form></div></main>
+<script src="common.js"></script><script>
+let step=1,PLANS=[];const secs=[...document.querySelectorAll('section[data-s]')];
+api('/api/plans').then(l=>{PLANS=l;$('#plans').innerHTML=l.length?l.map(p=>`<div class="plan" data-id="${p.id}" tabindex="0"><h3>${esc(p.name)}</h3><ul>${String(p.description||'').split('\n').filter(Boolean).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`)  .join(''):'<p class="small">Registration is currently closed.</p>';const first=$('#plans .plan');if(first)pick(first)}).catch(e=>show(out,e.message));
+function go(n){step=n;secs.forEach(s=>s.hidden=+s.dataset.s!==n);document.querySelectorAll('.steps div').forEach((d,i)=>d.classList.toggle('on',i+1===n));
+ if(n===3){f.otp.value='';out3.innerHTML='';setTimeout(()=>f.otp.focus(),50);const p=PLANS.find(x=>x.id===f.planId.value);sPlan.textContent=p.name;
+  post('/api/otp/request',{scope:'register',identifier:f.email.value,phone:f.phone.value}).catch(e=>show(out3,e.message))}scrollTo(0,0)}
+const pick=p=>{document.querySelectorAll('.plan').forEach(x=>x.classList.remove('sel'));p.classList.add('sel');f.planId.value=p.dataset.id};
+$('#plans').addEventListener('click',e=>{const p=e.target.closest('.plan');p&&pick(p)});$('#plans').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const p=e.target.closest('.plan');if(p){e.preventDefault();pick(p)}}});
+function validStep(n){if(n===1&&!f.planId.value){show(out,'Select a registration plan to continue');return false}out.innerHTML='';
+ const els=[...document.querySelector('section[data-s="'+n+'"]').querySelectorAll('input,select,textarea')].filter(x=>x.type!=='hidden');
+ for(const el of els){if(!el.checkValidity()){el.reportValidity();return false}}return true}
+document.querySelectorAll('.nx').forEach(b=>b.onclick=()=>{if(!validStep(step))return;go(step+1)});
+document.querySelectorAll('.bk').forEach(b=>b.onclick=()=>go(step-1));
+let LETTER=null,LOGO='';
+const LCSS='body{margin:0;background:#e5e5e5;font-family:Georgia,"Times New Roman",serif;color:#111}.sheet{width:210mm;min-height:297mm;box-sizing:border-box;margin:0 auto;background:#fff;padding:18mm 20mm;display:flex;flex-direction:column}.lh{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #000;padding-bottom:10px}.lh svg,.lh img{height:52px;width:auto}.lc{text-align:right;font:12px/1.5 Helvetica,Arial,sans-serif;color:#444}.lm{display:flex;justify-content:space-between;margin:18px 0 6px;font:13px Helvetica,Arial,sans-serif;color:#444}.sub{font:bold 16px Helvetica,Arial,sans-serif;margin:10px 0 14px}.sheet p{font-size:14px;line-height:1.65;margin:0 0 12px}.dt{border-collapse:collapse;width:100%;margin:6px 0 16px;font:13px Helvetica,Arial,sans-serif}.dt td{border:1px solid #bbb;padding:6px 10px}.dt td:first-child{background:#f2f2f2;font-weight:bold;width:34%}.so{margin-top:18px;white-space:pre-line}.lf{margin-top:auto;border-top:1px solid #999;padding-top:8px;font:11px Helvetica,Arial,sans-serif;color:#666;text-align:center}@media print{body{background:#fff}.sheet{margin:0;width:auto;min-height:0}@page{size:A4;margin:12mm}}';
+function letterHtml(L){const paras=L.body.split(/\n{2,}/).map(x=>'<p>'+esc(x).replace(/\n/g,'<br>')+'</p>').join('');
+ return `<div class="sheet"><div class="lh"><div>${LOGO}</div><div class="lc"><b>${esc(L.program)}</b><br>${esc(L.contact.address)}<br>${esc(L.contact.email)}<br>${esc(L.contact.phone)}</div></div>
+<div class="lm"><span>Ref: ${esc(L.ref)}</span><span>${esc(L.date)}</span></div><div class="sub">${esc(L.subject)}</div><p>Dear ${esc(L.name)},</p>${paras}
+<table class="dt">${L.details.map(d=>`<tr><td>${esc(d[0])}</td><td>${esc(d[1])}</td></tr>`).join('')}</table><div class="so">${esc(L.signoff)}</div><div class="lf">${esc(L.program)} · ${esc(L.contact.email)} · ${esc(L.contact.phone)}</div></div>`}
+function showLetter(L){LETTER=L;const st=document.createElement('style');st.id='lst';document.getElementById('lst')?.remove();st.textContent=LCSS.replace(/body\{[^}]*\}/,'').replace(/@media print\{[^@]*@page[^}]*\}\}/,'')+'.letterwrap{background:#e5e5e5;padding:10px;border-radius:10px;overflow:auto;max-height:calc(100vh - 150px)}.letterwrap .sheet{transform-origin:top left}.lbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}@media print{body *{visibility:hidden}#letter,#letter *{visibility:visible}#letter{position:absolute;left:0;top:0;width:100%;background:#fff;padding:0;max-height:none}.card{box-shadow:none}@page{size:A4;margin:0}}';document.head.appendChild(st);
+ letter.innerHTML=letterHtml(L);go(4)}
+dl.onclick=()=>{if(!LETTER)return;const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(LETTER.subject)+'</title><style>'+LCSS+'</style></head><body>'+letterHtml(LETTER)+'</body></html>';
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download='welcome-letter-'+LETTER.ref+'.html';document.body.appendChild(a);a.click();a.remove()};
+pr.onclick=()=>window.print();
+done.onclick=()=>{if(EMBED){f.reset();const fp=document.querySelector('#plans .plan');fp?pick(fp):f.planId.value='';go(1);parent.registeredOK()}else location.href='/'};
+f.onsubmit=async e=>{e.preventDefault();if(!validStep(3))return;try{LOGO=await fetch('/logo.svg').then(x=>x.text()).catch(()=>'');const d=await api('/api/principals',{method:'POST',body:new FormData(f)});
+ EMBED&&parent.refreshStats&&parent.refreshStats();showLetter(d.letter)}catch(e){show(out3,e.message);toast('Registration failed: '+e.message,false)}};
+</script></body></html>

@@ -1,0 +1,342 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Admin · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="admin">
+<main><div class="pagehead" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><h1 style="margin:0">Admin · Reviewer console</h1><span><button class="alt" id="menuBtn"></button> <button class="alt" id="closeBtn" title="Close the admin console">✕ Close</button></span></div>
+<div class="adm" id="adm"><aside class="side"><div class="sh"><span>Menu</span><button class="alt" id="sideX" title="Close menu">✕</button></div><div class="sidenav" id="tabs"></div><a href="#" id="purge" class="purge">Delete all data</a></aside>
+<div class="admmain"><div class="card"><div id="custom"></div><div class="toolbar" id="tools"></div><div class="table-wrap" id="tbl"></div><div class="pager" id="pager"></div></div></div></div>
+</main>
+<dialog id="rv"><div id="rvBody"></div></dialog>
+<script src="common.js"></script><script>
+const PAGE=10;let data={insights:[],rewards:[],principals:[],emails:[],fund:null,summary:null,admins:[],plans:[],templates:[],configs:[],programVideos:[],funds:[],health:null};
+const S={tab:'dashboard',fundOpen:false,q:'',filter:'all',page:1,tpl:'insight_request',msel:new Set(),mq:'',mpage:1,msearch:'',rq:''};
+let ME={id:null,role:'super'};
+const isSuper=()=>(ME.role||'super')==='super';
+const ADMIN_TABS=['dashboard','insights','principals'];
+const tabVisible=k=>isSuper()||ADMIN_TABS.includes(k);
+const locked=r=>!!r&&!!ME.id&&(r.createdBy===ME.id);
+const LOCKNOTE='<p class="small" style="color:#a00">You created this row, so another admin must change its status.</p>';
+function lockField(sel,hidden=true){const el=$(sel);if(!el)return;el.disabled=true;if(hidden&&el.name)el.insertAdjacentHTML('beforebegin','<input type="hidden" name="'+el.name+'" value="'+esc(el.value)+'">');el.insertAdjacentHTML('afterend',LOCKNOTE)}
+const fundBadge=i=>i.fundingStatus==="Released"?badge("Published","Approved"):i.fundingStatus==="Pending"||i.funded?badge("OnReview","Funding requested"):"—";
+document.querySelector('header nav')?.remove(); // no Home / Insights / Register links in the admin header
+const badge=(c,t)=>`<span class="badge ${esc(c)}">${esc(t)}</span>`;
+const bytes=n=>{n=Number(n)||0;const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return n.toFixed(i?1:0)+' '+u[i]};
+const dur=s=>s?Math.floor(s/60)+':'+String(s%60).padStart(2,'0'):'';
+const hist=(e,i)=>`<button class="btn-sm alt" title="Audit history" aria-label="Audit history" data-audit="${e}:${esc(i)}">${ICON.history}</button>`;
+const bt=(attr,ic,extra='')=>`<button class="btn-sm ${extra}" ${attr}>${ic}</button>`;
+const TABS={
+ dashboard:{label:'Dashboard',icon:ICON.dash,custom:()=>dashHtml()},
+ insights:{label:'Works',icon:ICON.video,filters:[['all','All history'],['last30','Last 30'],['Published','Published'],['OnReview','On review'],['funded','Approved'],['requested','Funding requested']],
+  rows:()=>{let l=data.insights;if(S.filter==='last30')l=l.slice(0,30);else if(S.filter==='funded')l=l.filter(i=>i.fundingStatus==='Released');else if(S.filter==='requested')l=l.filter(i=>i.funded&&i.fundingStatus!=='Released');else if(S.filter!=='all')l=l.filter(i=>i.status===S.filter);return l},
+  text:i=>[i.principal.name,i.principal.school.name,i.status,i.fundingStatus==='Released'?'funding approved':i.funded?'funding requested':''].join(' '),
+  head:['Date','School','Length','Status','Funding','YouTube',''],
+  row:i=>`<td>${fmt(i.at)}</td><td><b>${esc(i.principal.school.name)}</b><br><small>${esc(i.principal.name)}</small></td><td>${dur(i.duration)||'—'}</td><td>${badge(i.status,i.status)}</td><td>${fundBadge(i)}</td><td>${ytCell(i)}</td>
+   <td style="white-space:nowrap">${bt(`data-review="${i.id}"`,IC.update)} ${hist('insight',i.id)} ${isSuper()?bt(`data-del="${i.id}"`,IC.del,'danger'):''}</td>`},
+ funds:{label:'Funds',icon:ICON.coin,filters:[['all','All'],['active','Active'],['inactive','Inactive']],
+  top:()=>`<p style="margin:0 0 10px"><button data-fundnew>${ICON.coin}Add fund</button> <small>Rewards are paid from the active fund whose period includes today. Changes need your OTP.</small></p>`,
+  rows:()=>S.filter==='all'?data.funds:data.funds.filter(f=>f.status===S.filter),text:f=>[f.name,f.reason,f.status].join(' '),
+  head:['Fund','Period','Funds used','Amount each','Total','Status',''],
+  row:f=>`<td><b>${esc(f.name)}</b>${f.current?' '+badge('Paid','Current'):''}<br><small>${esc(f.reason)}</small></td><td>${fd(f.periodStart)} →<br>${fd(f.periodEnd)}<br><small>${statusTxt[f.state]||f.state}</small></td><td>${f.used} / ${f.perPeriod}</td><td>NRS ${fmtN(f.amount)}</td><td>NRS ${fmtN(f.amount*f.perPeriod)}</td><td>${badge(f.status==='active'?'Published':'OnReview',f.status)}</td><td style="white-space:nowrap">${bt(`data-fundedit="${f.id}"`,IC.update)} ${hist('fund',f.id)}</td>`},
+ release:{label:'Release funding',icon:ICON.coin,filters:[['all','All'],['Pending','Pending release'],['Released','Released']],
+  top:()=>{const pend=data.rewards.filter(r=>r.status==='Pending');return `<p style="margin:0 0 10px"><b>${pend.length}</b> award(s) waiting to be released · NRS <b>${fmtN(pend.reduce((s,r)=>s+r.amount,0))}</b>. <small>After a work is published, "Request funding" sends it here. Release it manually once the payment is made.</small></p>`},
+  rows:()=>S.filter==='all'?data.rewards:data.rewards.filter(r=>r.status===S.filter),text:r=>[r.principal,r.school,r.reference,r.status].join(' '),
+  head:['Awarded','Name','School','Amount','Reason','Status','Reference',''],
+  row:r=>`<td>${fmt(r.at)}</td><td><b>${esc(r.principal)}</b></td><td>${esc(r.school)}</td><td>NRS ${fmtN(r.amount)}</td><td><small>${esc(r.reason||'—')}</small></td><td>${badge(r.status==='Released'?'Published':'OnReview',r.status)}${r.releasedAt?'<br><small>'+fmt(r.releasedAt)+'</small>':''}</td><td>${esc(r.reference||'—')}${r.note?'<br><small>'+esc(r.note)+'</small>':''}</td><td style="white-space:nowrap">${r.status==='Pending'?bt(`data-release="${r.id}"`,ICON.check+'Release'):''} ${hist('reward',r.id)}</td>`},
+ principals:{label:'Registrations',icon:ICON.users,top:()=>`<p style="margin:0 0 10px"><button data-pnew>${ICON.users}Register school</button> <small>Register a school on its behalf. It becomes active at once and gets the welcome email.</small></p>`,filters:()=>[['all','All'],...data.plans.map(p=>['plan:'+p.id,p.name]),['active','Active'],['inactive','Inactive']],
+  rows:()=>S.filter==='all'?data.principals:S.filter.startsWith('plan:')?data.principals.filter(p=>p.planId===S.filter.slice(5)):data.principals.filter(p=>p.status===S.filter),text:p=>[p.name,p.school,p.email,p.phone,p.plan,p.status].join(' '),
+  head:['Name','School','Contact','Plan','Status','Works','Last request email',''],
+  row:p=>`<td><b>${esc(p.name)}</b></td><td>${esc(p.school)}</td><td>${esc(p.email)}<br><small>${esc(p.phone)}</small></td><td>${badge(planCls(p),p.plan)}</td><td>${badge(p.status,p.status.replace('_',' '))}</td><td>${p.insights}</td><td>${p.lastInsightEmailAt?fmt(p.lastInsightEmailAt):'—'}</td><td style="white-space:nowrap">${bt(`data-pedit="${p.id}"`,IC.update)} ${hist('school',p.id)} ${isSuper()?bt(`data-pdel="${p.id}"`,IC.del,'danger'):''}</td>`},
+ plans:{label:'Plans',icon:ICON.tag,filters:[['all','All'],['active','Active'],['inactive','Inactive']],
+  top:()=>`<p style="margin:0 0 10px"><button data-plannew>${ICON.tag}Add plan</button> <small>Active plans are listed on the Register screen; visitors must pick one.</small></p>`,
+  rows:()=>S.filter==='all'?data.plans:data.plans.filter(p=>p.status===S.filter),text:p=>[p.name,p.description,p.status].join(' '),
+  head:['Plan','Price','Details','Registered','Status',''],
+  row:p=>`<td><b>${esc(p.name)}</b></td><td>NRS ${p.price}</td><td><small>${esc(p.description).replace(/\n/g,' · ')}</small></td><td>${p.schools}</td><td>${badge(p.status==='active'?'Published':'OnReview',p.status)}</td><td style="white-space:nowrap">${bt(`data-planedit="${p.id}"`,IC.update)} ${hist('plan',p.id)} ${bt(`data-plandel="${p.id}"`,IC.del,'danger')}</td>`},
+ videos:{label:'Program videos',icon:ICON.video,filters:[['all','All'],['Published','Published'],['OnReview','On review']],
+  top:()=>`<p style="margin:0 0 10px"><button data-vnew>${ICON.video}Record program video</button> <small>The home page plays the latest published, active video.</small></p>`,
+  rows:()=>S.filter==='all'?data.programVideos:data.programVideos.filter(v=>v.status===S.filter),text:v=>[v.title,v.status,v.by].join(' '),
+  head:['Added','Title','Status','Active','On home page',''],
+  row:v=>`<td>${fmt(v.createdAt)}</td><td><b>${esc(v.title)}</b></td><td>${badge(v.status,v.status)}</td><td>${v.active?'Yes':'No'}</td><td>${liveVideo()&&liveVideo().id===v.id?badge('Paid','Live'):'—'}</td><td style="white-space:nowrap">${bt(`data-vedit="${v.id}"`,IC.update)} ${hist('video',v.id)} ${bt(`data-vdel="${v.id}"`,IC.del,'danger')}</td>`},
+ admins:{label:'Admin users',icon:ICON.shield,filters:[['all','All'],['active','Active'],['inactive','Inactive']],
+  top:()=>`<p style="margin:0 0 10px"><button data-adnew>${ICON.shield}Add admin</button> <button data-adnew="super">${ICON.shield}Add super admin</button> <small>Super admins have full access. Admins can only register schools and review works. Sign in with phone or email and a one-time code. One active admin per phone number.</small></p>`,
+  rows:()=>S.filter==='all'?data.admins:data.admins.filter(a=>a.status===S.filter),text:a=>[a.name,a.phone,a.email,a.status].join(' '),
+  head:['Name','Phone','Email','Role','Status',''],row:a=>`<td><b>${esc(a.name)}</b></td><td>${esc(a.phone)}</td><td>${esc(a.email)}</td><td>${badge((a.role||'super')==='super'?'Paid':'OnReview',(a.role||'super')==='super'?'Super admin':'Admin')}</td><td>${badge(a.status,a.status)}</td><td style="white-space:nowrap">${bt(`data-adedit="${a.id}"`,IC.update)} ${hist('admin',a.id)}</td>`},
+ templates:{label:'Email templates',icon:ICON.mail,custom:()=>tplHtml(),after:()=>tplPreview()},
+ manual:{label:'Manual send',after:()=>manualAfter(),icon:ICON.send,custom:()=>manualHtml()},
+ random:{label:'Random send',icon:ICON.shuffle,filters:[['all','All active'],['eligible','Eligible now'],['wait','Recently emailed']],
+  top:()=>{const n=data.principals.filter(eligible).length,d=data.summary.repeatDays;return `<p style="margin-top:0">Picks one random active school that has not received a request in the last ${d} days. <b>${n}</b> eligible now.</p><p><button id="randGo" ${n?'':'disabled'}>${ICON.shuffle}Send random topic request</button></p>`},
+  rows:()=>{const l=data.principals.filter(p=>p.status==='active');return S.filter==='eligible'?l.filter(eligible):S.filter==='wait'?l.filter(p=>!eligible(p)):l},
+  text:p=>[p.name,p.school,p.email].join(' '),head:['Name','School','Email','Last request email','Eligible'],
+  row:p=>`<td><b>${esc(p.name)}</b></td><td>${esc(p.school)}</td><td>${esc(p.email)}</td><td>${p.lastInsightEmailAt?fmt(p.lastInsightEmailAt):'—'}</td><td>${eligible(p)?badge('Published','Eligible'):badge('OnReview','Wait until '+new Date(p.lastInsightEmailAt+data.summary.repeatDays*864e5).toLocaleDateString())}</td>`},
+ emails:{label:'Outbox',icon:ICON.inbox,filters:[],rows:()=>data.emails,text:e=>[e.to,e.subject,e.kind].join(' '),head:['When','To','Subject','Type','Status'],
+  row:e=>`<td>${fmt(e.sentAt)}</td><td>${esc(e.to)}</td><td><a href="/outbox/${e.id}.html" target="_blank">${esc(e.subject)}</a></td><td>${esc(e.kind)}</td><td>${esc(e.status||'saved')}${e.error?`<br><small>${esc(e.error)}</small>`:''}</td>`},
+ configs:{label:'Configs',icon:ICON.cfg,custom:()=>cfgHtml()},
+ health:{label:'Health monitor',icon:ICON.pulse,custom:()=>healthHtml()}
+};
+if(TABS[location.hash.slice(1)])S.tab=location.hash.slice(1);
+const ytCell=i=>{const y=i.youtube;if(!y)return'—';if(y.status==='published')return`<a href="${esc(y.url)}" target="_blank" rel="noopener">▶ Watch</a>`;if(y.status==='uploading')return'Uploading…';return`<span title="${esc(y.error||'')}">${badge('OnReview','Failed')}</span>`};
+const planCls=p=>{const pl=data.plans.find(x=>x.id===p.planId);return pl&&pl.price>0?'Paid':'Free'};
+const liveVideo=()=>data.programVideos.filter(v=>v.status==='Published'&&v.active).sort((a,b)=>(b.publishedAt||b.createdAt)-(a.publishedAt||a.createdAt))[0];
+const TAB_ORDER=['dashboard','plans','principals','manual','random','insights','funds','release','videos','emails','configs','health','admins','templates'];
+function render(){
+ if(!tabVisible(S.tab))S.tab='dashboard';
+ const T=TABS[S.tab];
+ tabs.innerHTML=Object.entries(TABS).filter(([k])=>tabVisible(k)).sort((x,y)=>TAB_ORDER.indexOf(x[0])-TAB_ORDER.indexOf(y[0])).map(([k,t])=>`<button data-tab="${k}" class="${k===S.tab?'on':''}">${t.icon||''}${t.label}${countOf(k)!==undefined?' ('+countOf(k)+')':''}</button>`).join('');
+ if(T.custom){if(!custom.dataset.tab||custom.dataset.tab!==S.tab||!custom.contains(document.activeElement)){custom.innerHTML=T.custom();custom.dataset.tab=S.tab;T.after&&T.after()}tools.innerHTML='';tbl.innerHTML='';pager.innerHTML='';return}
+ custom.innerHTML=T.top?T.top():'';custom.dataset.tab='';
+ const keep=document.activeElement&&document.activeElement.id==='sq';
+ const fl=typeof T.filters==='function'?T.filters():T.filters;
+ tools.innerHTML=`<input id="sq" placeholder="Search ${T.label.toLowerCase()}…" value="${esc(S.q)}">${fl.length?`<select id="sf" style="max-width:200px">${fl.map(([v,l])=>`<option value="${esc(v)}" ${S.filter===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`:''}`;
+ if(keep){const el=$('#sq');el.focus();el.setSelectionRange(S.q.length,S.q.length)}
+ const q=S.q.trim().toLowerCase();let rows=T.rows();if(q)rows=rows.filter(r=>T.text(r).toLowerCase().includes(q));
+ const pages=Math.max(1,Math.ceil(rows.length/PAGE));if(S.page>pages)S.page=pages;
+ const slice=rows.slice((S.page-1)*PAGE,S.page*PAGE);
+ tbl.innerHTML=slice.length?`<table><thead><tr>${T.head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${slice.map(r=>`<tr>${T.row(r)}</tr>`).join('')}</tbody></table>`:'<p class="small">Nothing found.</p>';
+ const from=rows.length?(S.page-1)*PAGE+1:0;
+ pager.innerHTML=`<small>${from}–${Math.min(S.page*PAGE,rows.length)} of ${rows.length}</small><div class="pg"><button class="alt" data-pg="${S.page-1}" ${S.page<=1?'disabled':''}>‹ Prev</button>${Array.from({length:pages},(_,i)=>i+1).filter(n=>n===1||n===pages||Math.abs(n-S.page)<=1).map((n,i,a)=>(i&&n-a[i-1]>1?'<span>…</span>':'')+`<button class="${n===S.page?'':'alt'}" data-pg="${n}">${n}</button>`).join('')}<button class="alt" data-pg="${S.page+1}" ${S.page>=pages?'disabled':''}>Next ›</button></div>`;
+}
+const DAY=864e5,eligible=p=>p.status==='active'&&(!p.lastInsightEmailAt||Date.now()-p.lastInsightEmailAt>=data.summary.repeatDays*DAY);
+const countOf=k=>({insights:data.insights.length,funds:data.funds.length,release:data.rewards.filter(r=>r.status==='Pending').length,principals:data.principals.length,plans:data.plans.length,videos:data.programVideos.length,admins:data.admins.length,emails:data.emails.length}[k]);
+const fmtN=n=>(Math.round(n*100)/100).toLocaleString();
+const fd=t=>new Date(t).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+const statusTxt={active:'Active',upcoming:'Not started',ended:'Ended'};
+function dashHtml(){const f=data.fund,s=data.summary;if(!s||(isSuper()&&!f))return'<p class="small">Loading…</p>';
+ if(!isSuper())return `<h2>${ICON.users}Registrations</h2><div class="fund"><div><b>${s.registrations}</b><span>Total registrations</span></div>${s.byPlan.map(p=>`<div><b>${p.count}</b><span>${esc(p.name)} plan</span></div>`).join('')}</div><h2>${ICON.video}Works</h2><div class="fund"><div><b>${data.insights.length}</b><span>Total works</span></div><div><b>${data.insights.filter(i=>i.status==='OnReview').length}</b><span>Waiting for review</span></div><div><b>${data.insights.filter(i=>i.status==='Published').length}</b><span>Published</span></div></div>`;
+ return `<h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">${ICON.coin}Funds</h2>
+ <div class="fund"><div><b>${f.remaining} / ${f.perPeriod}</b><span>Funds remaining${f.name?" · "+esc(f.name):""}</span></div><div><b>NRS ${fmtN(f.amount)}</b><span>Per fund</span></div><div><b>NRS ${fmtN(f.remaining*f.amount)}</b><span>Budget left</span></div><div class="sm"><b>${fd(f.periodStart)} →<br>${fd(f.periodEnd)}</b><span>Funding period · ${statusTxt[f.state]}</span></div></div>
+
+ <h2>${ICON.users}Registrations</h2><div class="fund"><div><b>${s.registrations}</b><span>Total registrations</span></div>${s.byPlan.map(p=>`<div><b>${p.count}</b><span>${esc(p.name)} plan</span></div>`).join('')}</div>`}
+function fundForm(f,id){return `<form id="fdf"><input type="hidden" name="version" value="${f.version}"><label>Fund name</label><input name="name" value="${esc(f.name)}" maxlength="60" required>
+<div class="row"><div><label>Start date</label><input name="startDate" type="date" value="${f.startDate}" required></div><div><label>End date</label><input name="endDate" type="date" value="${f.endDate}" required></div></div>
+<div class="row"><div><label>Number of funds</label><input name="perPeriod" type="number" min="1" max="1000" value="${f.perPeriod}" required></div><div><label>Amount per fund (NRS)</label><input name="amount" type="number" min="1" step="any" value="${f.amount}" required></div></div>
+<div class="fundbox" style="justify-content:space-between"><span><b>Total amount</b></span><b id="ftotal" style="font-size:20px">NRS ${fmtN(f.perPeriod*f.amount)}</b></div>
+<label>Reason for the fund</label><textarea name="reason" rows="3" maxlength="500" required placeholder="Say what the money is for and who benefits.">${esc(f.reason)}</textarea>
+<label>Status</label><select name="status"><option value="active" ${f.status==='active'?'selected':''}>active</option><option value="inactive" ${f.status==='inactive'?'selected':''}>inactive</option></select>
+<label>OTP to confirm</label><input name="otp" class="otp" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="one-time-code" required style="max-width:180px;font-size:20px"> <button type="button" class="alt btn-sm" data-fundotp>Send code</button><br><br><button type="submit">${IC.save}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`}
+function editFund(id){const t=Date.now(),f=id?data.funds.find(x=>x.id===id):{name:'',startDate:isoD(t),endDate:isoD(t+30*864e5),perPeriod:5,amount:500,reason:'',status:'active',version:0};
+ rvBody.innerHTML=`<h2>${id?'Update':'Add'} fund</h2>${id?`<p class="small">${f.used} of ${f.perPeriod} funds already awarded.</p>`:''}<div id="rvMsg"></div>${fundForm(f,id)}`;
+ rv.showModal();$('#cl').onclick=closeRv;if(id&&locked(f))lockField('#fdf [name=status]');
+ $('#fdf').onsubmit=async e=>{e.preventDefault();const o=Object.fromEntries(new FormData(e.target));try{id?await put('/api/admin/funds/'+id,o):await post('/api/admin/funds',o);toast('Fund saved');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+const isoD=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const MPAGE=12;
+function manualRows(){const act=data.principals.filter(p=>p.status==='active'),q=S.msearch.trim().toLowerCase();return q?act.filter(p=>[p.name,p.school,p.email,p.phone].join(' ').toLowerCase().includes(q)):act}
+function manualHtml(){const all=data.principals.filter(p=>p.status==='active'),rows=manualRows(),pages=Math.max(1,Math.ceil(rows.length/MPAGE));if(S.mpage>pages)S.mpage=pages;const slice=rows.slice((S.mpage-1)*MPAGE,S.mpage*MPAGE);
+ return `<form id="mf"><label>Send to</label><div class="hb" style="margin-bottom:8px"><input id="msq" placeholder="Search schools…" value="${esc(S.msearch)}" style="max-width:280px"><button type="button" class="alt btn-sm" data-mselall>Select all ${rows.length}</button><button type="button" class="alt btn-sm" data-mselnone>Clear</button><b>${S.msel.size}</b> selected of ${all.length}</div>
+ <div class="sgrid">${slice.map(p=>`<label class="scard ${S.msel.has(p.id)?'on':''}"><input type="checkbox" data-msel="${p.id}" ${S.msel.has(p.id)?'checked':''}><span><b>${esc(p.school)}</b><br>${esc(p.name)}<br><small>${esc(p.email)}</small></span></label>`).join('')||'<small>No active schools found.</small>'}</div>
+ <div class="pager"><small>${rows.length?(S.mpage-1)*MPAGE+1:0}–${Math.min(S.mpage*MPAGE,rows.length)} of ${rows.length}</small><div class="pg"><button type="button" class="alt" data-mpg="${S.mpage-1}" ${S.mpage<=1?'disabled':''}>‹ Prev</button><span class="small">Page ${S.mpage} / ${pages}</span><button type="button" class="alt" data-mpg="${S.mpage+1}" ${S.mpage>=pages?'disabled':''}>Next ›</button></div></div>
+ <p class="small">Each school gets a topic from the topic pool (Configs → insight.questions) in the "Talk / debate request" email. A school can submit its video only after this email is sent. Manual sends do not affect the repeat rule of random sends.</p><button type="submit" ${S.msel.size?'':'disabled'}>${ICON.send}Send request to ${S.msel.size} school(s)</button></form>`}
+function manualAfter(){if(S.mfocus){const el=$('#'+S.mfocus);if(el){el.focus();el.setSelectionRange&&el.setSelectionRange(el.value.length,el.value.length)}S.mfocus=null}}
+const mrender=(focus)=>{S.mfocus=focus||null;custom.dataset.tab='';render()};
+// ----- email templates -----
+function tplHtml(){const t=data.templates.find(x=>x.key===S.tpl)||data.templates[0];if(!t)return'<p class="small">Loading…</p>';S.tpl=t.key;
+ return `<div class="hb" style="margin-bottom:8px">${data.templates.map(x=>`<button class="${x.key===S.tpl?'':'alt'}" data-tpl="${x.key}">${esc(x.name)}</button>`).join('')}${hist('template',S.tpl)}</div>
+ <div class="tplwrap"><form id="tf"><input type="hidden" name="version" value="${t.version}">
+ <label>Subject</label><input name="subject" value="${esc(t.subject)}" required>
+ <label>Heading</label><input name="heading" value="${esc(t.heading)}">
+ <label>Details (blank line = new paragraph)</label><textarea name="body" rows="11" required>${esc(t.body)}</textarea>
+ <div class="row"><div><label>Button text (blank = no button)</label><input name="buttonText" value="${esc(t.buttonText)}"></div><div><label>Footer</label><input name="footer" value="${esc(t.footer)}"></div></div>
+ <label style="text-transform:none;font-weight:600"><input type="checkbox" name="showLogo" style="width:auto" ${t.showLogo?'checked':''}> Show logo</label>
+ <label style="text-transform:none;font-weight:600"><input type="checkbox" name="showDate" style="width:auto" ${t.showDate?'checked':''}> Show date</label>
+ <p class="small">Placeholders: {{name}} {{school}} {{plan}} {{question}} {{date}} {{program}} {{link}}</p>
+ <button type="submit">${IC.save}</button> <button type="button" class="alt" data-tpltest>${ICON.send}Send test to me</button></form>
+ <div><label style="margin-top:0">Preview with example data</label><iframe id="tpv" title="Email preview"></iframe></div></div>`}
+let tpT;
+function tplForm(){const f=$('#tf');if(!f)return null;const o=Object.fromEntries(new FormData(f));o.showLogo=f.showLogo.checked;o.showDate=f.showDate.checked;return o}
+function tplPreview(){clearTimeout(tpT);tpT=setTimeout(async()=>{const o=tplForm();if(!o||!$('#tpv'))return;try{const d=await post(`/api/admin/templates/${S.tpl}/preview`,o);$('#tpv').srcdoc=d.html}catch(e){}},200)}
+// ----- configs -----
+function cfgInput(c){const k=esc(c.key);
+ if(c.type==='boolean')return `<label style="text-transform:none;margin:0"><input type="checkbox" data-cfg="${k}" style="width:auto" ${c.value?'checked':''}> On</label>`;
+ if(c.type==='text')return `<textarea data-cfg="${k}" rows="3">${esc(c.value)}</textarea>`;
+ return `<input data-cfg="${k}" type="${c.type==='number'?'number':c.type==='secret'?'password':'text'}" value="${esc(c.value)}" ${c.type==='secret'?'autocomplete="new-password"':''}>`}
+function cfgHtml(){if(!data.configs.length)return'<p class="small">Loading…</p>';const groups=[...new Set(data.configs.map(c=>c.group))];
+ return `<p class="small" style="margin-top:0">All system settings stored in the database. A change applies immediately.</p><div class="hb" style="margin-bottom:8px"><input id="mailTo" placeholder="Email for test (blank = your own)" style="max-width:260px"><button type="button" class="alt btn-sm" data-mailtest>Send test email</button><small>Uses the SMTP settings below.</small></div>
+<div class="hb" style="margin-bottom:8px"><input id="smsTo" placeholder="Phone for test SMS (blank = your own)" style="max-width:260px"><button type="button" class="alt btn-sm" data-smstest>Send test SMS</button><small>Save the SMS settings first.</small></div>`+groups.map(g=>`<h3 style="margin:14px 0 4px">${esc(g)}</h3>`+data.configs.filter(c=>c.group===g).map(c=>`<div class="cfgrow"><div><b>${esc(c.key)}</b><small>${esc(c.description)}</small></div><div>${cfgInput(c)}</div><div style="white-space:nowrap">${bt(`data-cfgsave="${esc(c.key)}"`,IC.save)} ${hist('config',c.key)}</div></div>`).join('')).join('')}
+// ----- health -----
+function healthHtml(){const h=data.health;if(!h)return'<p class="small">Loading…</p>';const m=h.memory,d=h.disk,pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
+ const st=h.storage;
+ return `<div class="hb" style="margin-bottom:10px"><h2 style="margin:0">${ICON.pulse}Health monitor</h2><button class="alt btn-sm" data-healthrefresh>Refresh</button><small>${esc(h.runtime.host)} · ${esc(h.runtime.platform)} · Node ${esc(h.runtime.node)} · up ${Math.floor(h.runtime.uptimeSec/3600)}h ${Math.floor(h.runtime.uptimeSec%3600/60)}m</small></div>
+ <div class="fund"><div><b>${h.cpu.usedPct}%</b><span>CPU used (${h.cpu.cores} cores)</span></div><div><b>${bytes(m.used)} / ${bytes(m.total)}</b><span>Memory used</span></div><div><b>${bytes(m.free)}</b><span>Memory free</span></div><div><b>${d?bytes(d.free):'—'}</b><span>Disk free</span></div></div>
+ <p style="margin:6px 0 0"><b>CPU</b> ${h.cpu.usedPct}% used · ${100-h.cpu.usedPct>=0?(100-h.cpu.usedPct).toFixed(1):0}% free · load ${h.cpu.load.map(x=>x.toFixed(2)).join(' / ')}</p><div class="bar"><i style="width:${h.cpu.usedPct}%"></i></div>
+ <p style="margin:6px 0 0"><b>Memory</b> ${bytes(m.used)} used · ${bytes(m.free)} free · app uses ${bytes(m.processRss)}</p><div class="bar"><i style="width:${pct(m.used,m.total)}%"></i></div>
+ ${d?`<p style="margin:6px 0 0"><b>Disk</b> (${esc(d.mount)}) ${bytes(d.used)} used · ${bytes(d.free)} free of ${bytes(d.total)}</p><div class="bar"><i style="width:${pct(d.used,d.total)}%"></i></div>`:''}
+ <h3 style="margin:14px 0 6px">Stored data</h3><table><thead><tr><th>What</th><th>Location</th><th>Files</th><th>Size</th></tr></thead><tbody>
+ <tr><td><b>Database</b></td><td><small>${esc(st.database.file)}</small></td><td>1</td><td>${bytes(st.database.size)}</td></tr>
+ ${[['data','Data folder (db + logs)',st.database],['videos','Videos',st.videos],['photos','Photos',st.photos],['outbox','Email outbox',st.outbox]].map(([k,l,x])=>`<tr><td>${l}</td><td><small>${esc(x.path)}</small></td><td>${x.files}</td><td>${bytes(x.size)}</td></tr>`).join('')}</tbody></table>`}
+async function loadHealth(){try{data.health=await api('/api/admin/health');if(S.tab==='health'){custom.dataset.tab='';render()}}catch(e){if(e.status===401)location.href='/admin-login.html'}}
+async function load(){try{if(!ME.id){ME=await api('/api/admin/me');document.querySelector('h1').textContent=isSuper()?'Admin · Super admin console':'Admin · Reviewer console'}
+ if(!isSuper()){const[a,p,sm,pl]=await Promise.all([api('/api/admin/insights'),api('/api/admin/principals'),api('/api/admin/summary'),api('/api/admin/plans')]);
+  data={...data,insights:a.history,principals:p,summary:sm,plans:pl,fund:null,rewards:[],emails:[],admins:[],templates:[],configs:[],programVideos:[],funds:[]};document.title='Admin · StuSPACE';purge.hidden=true;render();return}
+ const[a,r,p,e,f,sm,ad,pl,tp,cf,pv,fl]=await Promise.all([api('/api/admin/insights'),api('/api/admin/rewards'),api('/api/admin/principals'),api('/api/admin/emails'),api('/api/admin/fund'),api('/api/admin/summary'),api('/api/admin/admins'),api('/api/admin/plans'),api('/api/admin/templates'),api('/api/admin/configs'),api('/api/admin/program-videos'),api('/api/admin/funds')]);
+ data={...data,insights:a.history,rewards:r,principals:p,emails:e,fund:f,summary:sm,admins:ad,plans:pl,templates:tp,configs:cf,programVideos:pv,funds:fl};render()}catch(err){if(err.status===401)location.href='/admin-login.html';else toast(err.message,false)}}
+// a save that lost the version race: reload the latest data
+const fail=async err=>{toast(err.message,false);if(err.status===409)await load()};
+// ----- events (all in place: the page, tab, search and page number are kept) -----
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(d.gofunds!==undefined){S.tab='funds';S.q='';S.filter='all';S.page=1;custom.dataset.tab='';render()}
+ else if(d.fundnew!==undefined)editFund()
+ else if(d.fundedit)editFund(d.fundedit)
+ else if(d.fundotp!==undefined){try{const r=await post('/api/admin/otp');toast(r.delivered?'A code was sent to your email':'Enter your one-time code')}catch(er){toast(er.message,false)}}
+ else if(d.tab){S.tab=d.tab;S.q='';S.filter='all';S.page=1;custom.dataset.tab='';render();if(d.tab==='health')loadHealth()}
+ else if(d.healthrefresh!==undefined)loadHealth()
+ else if(d.mselall!==undefined){manualRows().forEach(p=>S.msel.add(p.id));mrender()}
+ else if(d.mselnone!==undefined){S.msel.clear();mrender()}
+ else if(d.mpg){S.mpage=+d.mpg;mrender()}
+ else if(d.release)openRelease(d.release)
+ else if(d.pg){S.page=+d.pg;render()}
+ else if(d.review)openReview(d.review);
+ else if(d.del)delInsight(d.del)
+ else if(d.pnew!==undefined)registerSchool()
+ else if(d.pedit)editPrincipal(d.pedit)
+ else if(d.pdel)delPrincipal(d.pdel)
+ else if(d.plannew!==undefined)editPlan()
+ else if(d.planedit)editPlan(d.planedit)
+ else if(d.plandel)delPlan(d.plandel)
+ else if(d.vnew!==undefined)editVideo()
+ else if(d.vedit)editVideo(d.vedit)
+ else if(d.vdel)delVideo(d.vdel)
+ else if(d.adnew!==undefined)editAdmin(null,d.adnew)
+ else if(d.adedit)editAdmin(d.adedit)
+ else if(d.tpl){S.tpl=d.tpl;custom.dataset.tab='';render()}
+ else if(d.tpltest!==undefined){try{const r=await post(`/api/admin/templates/${S.tpl}/test`,tplForm());toast('Test email sent to '+r.to)}catch(er){toast(er.message,false)}}
+ else if(d.mailtest!==undefined){b.disabled=true;try{const r=await post('/api/admin/email/test',{to:$('#mailTo').value});toast(r.status==='sent'?'Test email sent to '+r.to:r.status==='failed'?'Not sent: '+r.error:'SMTP is off, so the email was only saved in the Outbox ('+r.to+')',r.status!=='failed')}catch(er){toast(er.message,false)}b.disabled=false}
+ else if(d.smstest!==undefined){try{const r=await post('/api/admin/sms/test',{to:$('#smsTo').value});toast(r.sent?'Test SMS sent'+(r.sandbox?' (sandbox)':''):r.dryRun?'Sandbox dry run: no sandbox URL set, nothing sent':r.via==='disabled'?'SMS is disabled (sms.enabled)':'Not sent: '+(r.error||r.via),!!r.sent||!!r.dryRun)}catch(er){toast(er.message,false)}}
+ else if(d.audit)openAudit(d.audit)
+ else if(d.cfgsave)saveCfg(d.cfgsave)
+ else if(b.id==='randGo'){try{const r=await post('/api/admin/send-random');toast('Request sent to '+r.principal)}catch(err){toast(err.message,false)}await load()}});
+document.addEventListener('input',e=>{if(e.target.id==='sq'){S.q=e.target.value;S.page=1;render()}
+ if(e.target.id==='msq'){S.msearch=e.target.value;S.mpage=1;mrender('msq')}
+ const f=e.target.form;if(f&&f.id==='fdf'&&['perPeriod','amount'].includes(e.target.name))ftotal.textContent='NRS '+fmtN((+f.perPeriod.value||0)*(+f.amount.value||0));
+ if(f&&f.id==='tf')tplPreview()});
+document.addEventListener('change',e=>{if(e.target.id==='sf'){S.filter=e.target.value;S.page=1;render()}
+ if(e.target.dataset&&e.target.dataset.msel){e.target.checked?S.msel.add(e.target.dataset.msel):S.msel.delete(e.target.dataset.msel);mrender()}
+ if(e.target.form&&e.target.form.id==='tf')tplPreview()});
+// ----- release funding -----
+function openRelease(id){const r=data.rewards.find(x=>x.id===id);if(!r)return;
+ rvBody.innerHTML=`<h2>Release funding</h2><p><b>${esc(r.principal)}</b> · ${esc(r.school)}<br>Amount: <b>NRS ${fmtN(r.amount)}</b><br><small>${esc(r.reason||'')}</small></p><div id="rvMsg"></div>
+ <form id="rlf"><label>Payment reference</label><input name="reference" maxlength="80" required placeholder="Bank transfer / cheque / transaction number"><label>Note (optional)</label><input name="note" maxlength="300"><br>
+ <p class="small">The school is emailed that the funding has been released.</p><button type="submit">${ICON.check}Release funding</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;
+ $('#rlf').onsubmit=async e=>{e.preventDefault();try{await post('/api/admin/rewards/'+id+'/release',{version:r.version,...Object.fromEntries(new FormData(e.target))});toast('Funding released');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+// ----- audit history -----
+const av=v=>v===null||v===undefined||v===''?'—':typeof v==='object'?JSON.stringify(v):String(v).length>140?String(v).slice(0,140)+'…':String(v);
+async function openAudit(key){const [entity,...r]=key.split(':'),eid=r.join(':');
+ rvBody.innerHTML='<h2>Audit history</h2><div class="loader" style="color:#555"><div class="spin"></div></div>';rv.showModal();
+ try{const l=await api('/api/admin/audit?entity='+encodeURIComponent(entity)+'&entityId='+encodeURIComponent(eid));
+  rvBody.innerHTML=`<h2>Audit history</h2><p class="small" style="margin-top:0">${esc(entity)} · changes made by admins, newest first.</p>${l.length?`<div class="table-wrap" style="max-height:60vh;overflow:auto"><table><thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Changes</th></tr></thead><tbody>${l.map(a=>`<tr><td style="white-space:nowrap">${fmt(a.at)}</td><td>${esc(a.adminName)}</td><td>${esc(a.action)}</td><td>${a.changes.length?a.changes.map(c=>`<div><b>${esc(c.field)}</b>: <s>${esc(av(c.from))}</s> → ${esc(av(c.to))}</div>`).join(''):'<small>—</small>'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="small">No changes recorded yet.</p>'}<br><button class="alt" id="cl">${IC.cancel.replace('Cancel','Close')}</button>`;
+  $('#cl').onclick=closeRv}catch(e){rvBody.innerHTML='<div class="msg err">'+esc(e.message)+'</div><button class="alt" id="cl">Close</button>';$('#cl').onclick=closeRv}}
+// ----- configs -----
+async function saveCfg(key){const c=data.configs.find(x=>x.key===key),el=document.querySelector(`[data-cfg="${CSS.escape(key)}"]`);
+ const value=c.type==='boolean'?el.checked:el.value;try{await put('/api/admin/configs/'+encodeURIComponent(key),{value,version:c.version});toast('Saved '+key);custom.dataset.tab='';await load()}catch(e){await fail(e)}}
+// ----- review dialog -----
+function openReview(id){const i=data.insights.find(x=>x.id===id);if(!i)return;const sup=isSuper(),f=data.fund||{state:'none',remaining:0,perPeriod:0,amount:0},can=!i.funded&&(!sup||(f.state==='active'&&f.remaining>0));
+ rvBody.innerHTML=`<h2>Update work · ${esc(i.principal.school.name)} ${badge(i.status,i.status)} ${fundBadge(i)}</h2>
+ <video controls src="${esc(i.video)}"></video>
+ <p><b>${esc(i.principal.name)}</b> · ${esc(i.principal.school.name)}<br><small>${esc(i.principal.school.address)} · recorded ${fmt(i.at)}${i.duration?' · length '+dur(i.duration):''}</small></p>
+ ${i.question?`<p class="tag">Topic</p><p style="margin-top:0">“${esc(i.question)}”</p>`:''}${i.notes?`<p class="tag">Notes</p><p style="margin-top:0">${esc(i.notes)}</p>`:''}
+ <p class="small">Order: Request funding, then a super admin approves it in Release funding, which publishes the work (and sends it to YouTube when enabled) so it appears on Watch. Publish stays disabled until funding is approved.</p>
+ ${i.status==='Published'?`<p class="small">YouTube: ${i.youtube?(i.youtube.status==='published'?`<a href="${esc(i.youtube.url)}" target="_blank" rel="noopener">published ▶</a>`:i.youtube.status==='uploading'?'uploading…':'failed — '+esc(i.youtube.error||'')):'not published yet'}</p>`:''}
+ ${i.fundingStatus==='Released'?'<p class="small">Funding approved.</p>':i.funded?'<p class="small">Funding requested; waiting for approval in Release funding.</p>':!sup?'':can?`<p class="small">Request funding will award NRS ${fmtN(f.amount)} (${f.remaining} of ${f.perPeriod} funds left).</p>`:'<p class="small" style="color:#a00">Funds cannot be released: no active fund with funds left.</p>'}
+ <div id="rvMsg"></div><br>
+ <button id="ap" ${i.status==='Published'||i.fundingStatus!=='Released'?'disabled':''}>${ICON.check}Publish</button> ${!i.funded?`<button id="rf" ${can?'':'disabled'}>${ICON.coin}Request funding</button> `:''}${i.status==='Published'?`${!i.youtube||i.youtube.status==='failed'?'<button class="alt" id="yt">Publish to YouTube</button> ':''}<button class="alt" id="unp">Move to review</button> `:''}${sup?`<button class="danger" id="rvDel">${IC.del}</button> `:''}<button class="alt" id="cl">${IC.cancel}</button>`;
+ rv.showModal();
+ const send=async(body,msg)=>{try{await post(`/api/admin/insights/${id}/review`,{version:i.version,...body});toast(msg);closeRv();await load()}catch(e){show($('#rvMsg'),e.message);await fail(e)}};
+ $('#ap').onclick=()=>send({status:'Published',approve:true},'Published');
+ if($('#rf'))$('#rf').onclick=()=>send({status:i.status,fund:true},'Funding requested');
+ if($('#unp'))$('#unp').onclick=()=>send({status:'OnReview'},'Moved to review');
+ if($('#yt'))$('#yt').onclick=async()=>{try{await post(`/api/admin/insights/${id}/youtube`);toast('Publishing to YouTube started');closeRv();setTimeout(load,4000);await load()}catch(e){show($('#rvMsg'),e.message)}};
+ if($('#rvDel'))$('#rvDel').onclick=async()=>{closeRv();await delInsight(id)};$('#cl').onclick=closeRv}
+function closeRv(){rv.querySelector('video')?.pause();rv.close()}
+rv.addEventListener('close',()=>{rv.querySelector('video')?.pause();stopRec(true)});
+async function delInsight(id){const i=data.insights.find(x=>x.id===id);if(!confirm(`Delete the work from ${i.principal.school.name} (${fmt(i.at)})? The video file is removed permanently.`))return;
+ try{await api('/api/admin/insights/'+id,{method:'DELETE'});toast('Work deleted');await load()}catch(e){toast(e.message,false)}}
+// ----- schools -----
+function registerSchool(){const pl=data.plans.filter(x=>x.status==='active');
+ rvBody.innerHTML=`<h2>Register school</h2><div id="rvMsg"></div><form id="rsf">
+ <div class="row"><div><label>Principal / student name</label><input name="name" required></div><div><label>Email</label><input name="email" type="email" required></div></div>
+ <div class="row"><div><label>Phone (optional)</label><input name="phone"></div><div><label>LinkedIn (optional)</label><input name="linkedin"></div></div>
+ <label>Address</label><input name="address" required>
+ <div class="row"><div><label>School name</label><input name="schoolName" required></div><div><label>School address</label><input name="schoolAddress" required></div></div>
+ <div class="row"><div><label>Board / type (optional)</label><input name="schoolBoard"></div><div><label>Students (optional)</label><input name="schoolStudents" type="number" min="0"></div></div>
+ <label>Plan</label><select name="planId" required>${pl.map((x,i)=>`<option value="${x.id}" ${i===0?'selected':''}>${esc(x.name)}</option>`).join('')}</select><br><br>
+ <button type="submit">${IC.save}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;
+ $('#rsf').onsubmit=async e=>{e.preventDefault();try{await post('/api/admin/principals',Object.fromEntries(new FormData(e.target)));toast('School registered');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+function editPrincipal(id){const p=data.principals.find(x=>x.id===id);if(!p)return;const s=p.schoolInfo,v=x=>esc(x??'');
+ rvBody.innerHTML=`<h2>Update registration</h2><div id="rvMsg"></div><form id="pf"><input type="hidden" name="version" value="${p.version}">
+ <div class="row"><div><label>Full name</label><input name="name" value="${v(p.name)}" required></div><div><label>Email</label><input name="email" type="email" value="${v(p.email)}" required></div></div>
+ <div class="row"><div><label>Phone (optional)</label><input name="phone" value="${v(p.phone)}"></div><div><label>LinkedIn (optional)</label><input name="linkedin" value="${v(p.linkedin)}"></div></div>
+ <label>Home address</label><input name="address" value="${v(p.address)}" required>
+ <div class="row"><div><label>School name</label><input name="schoolName" value="${v(s.name)}" required></div><div><label>School address</label><input name="schoolAddress" value="${v(s.address)}" required></div></div>
+ <div class="row"><div><label>Board / type</label><input name="schoolBoard" value="${v(s.board)}"></div><div><label>Students</label><input name="schoolStudents" type="number" min="0" value="${v(s.students)}"></div></div>
+ <div class="row"><div><label>Plan</label><select name="planId">${data.plans.map(x=>`<option value="${x.id}" ${x.id===p.planId?'selected':''}>${esc(x.name)} · NRS ${x.price}</option>`).join('')}</select></div>
+ <div><label>Status</label><select name="status">${['active','inactive'].map(x=>`<option value="${x}" ${p.status===x?'selected':''}>${x.replace('_',' ')}</option>`).join('')}</select></div></div><br>
+ <button type="submit">${IC.save}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;
+ $('#pf').onsubmit=async e=>{e.preventDefault();try{await put('/api/admin/principals/'+id,Object.fromEntries(new FormData(e.target)));toast('Registration updated');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+async function delPrincipal(id){const p=data.principals.find(x=>x.id===id);if(!confirm(`Delete registration "${p.name}" (${p.school})? Their ${p.insights} insight(s), videos and photo are removed permanently.`))return;
+ try{await api('/api/admin/principals/'+id,{method:'DELETE'});toast('Registration deleted');await load()}catch(e){toast(e.message,false)}}
+// ----- registration plans -----
+function editPlan(id){const p=id?data.plans.find(x=>x.id===id):{name:'',price:0,description:'',status:'active',version:0};
+ rvBody.innerHTML=`<h2>${id?'Update':'Add'} registration plan</h2><div id="rvMsg"></div><form id="plf"><input type="hidden" name="version" value="${p.version}">
+ <div class="row"><div><label>Plan name</label><input name="name" value="${esc(p.name)}" maxlength="40" required></div><div><label>Price (NRS, 0 = free)</label><input name="price" type="number" min="0" step="any" value="${p.price}" required></div></div>
+ <label>What is included (one per line)</label><textarea name="description" rows="4" maxlength="400">${esc(p.description)}</textarea>
+ <label>Status</label><select name="status"><option value="active" ${p.status==='active'?'selected':''}>active</option><option value="inactive" ${p.status==='inactive'?'selected':''}>inactive</option></select><br><br>
+ <button type="submit">${IC.save}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;if(id&&locked(p))lockField('#plf [name=status]');
+ $('#plf').onsubmit=async e=>{e.preventDefault();const o=Object.fromEntries(new FormData(e.target));try{id?await put('/api/admin/plans/'+id,o):await post('/api/admin/plans',o);toast('Plan saved');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+async function delPlan(id){const p=data.plans.find(x=>x.id===id);if(!confirm(`Delete plan "${p.name}"?`))return;try{await api('/api/admin/plans/'+id,{method:'DELETE'});toast('Plan deleted');await load()}catch(e){toast(e.message,false)}}
+// ----- program videos -----
+let VR={};
+function editVideo(id){const v=id?data.programVideos.find(x=>x.id===id):null;
+ const maxMB=(data.configs.find(c=>c.key==='video.program.maxMB')||{value:100}).value;
+ rvBody.innerHTML=`<h2>${v?'Review & publish':'Record'} program video</h2><div id="rvMsg"></div><form id="vf"><input type="hidden" name="version" value="${v?v.version:0}">
+ <label>Title</label><input name="title" value="${esc(v?v.title:'')}" maxlength="120" required>
+ ${v?`<video controls src="${esc(v.video)}" style="margin-top:10px"></video><label>Status</label><select name="status"><option value="Published" ${v.status==='Published'?'selected':''}>Published</option><option value="OnReview" ${v.status==='OnReview'?'selected':''}>OnReview</option></select>
+ <label style="text-transform:none;font-weight:600"><input type="checkbox" name="active" style="width:auto" ${v.active?'checked':''}> Active (eligible to play on the home page)</label><br>
+ <button type="submit">${IC.save}</button> <button type="button" class="danger" id="vdl">${IC.del}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button>`
+ :`<div class="vbox" style="height:300px;flex:none;margin-top:10px"><video id="rv_v" playsinline></video><div class="vph" id="rv_ph">Press Record to start</div></div>
+ <div class="rmeta"><span id="rv_t"></span><span id="rv_s">Max size ${maxMB} MB</span></div>
+ <div class="rbar" style="margin-top:8px"><button type="button" id="rv_rec" class="recbtn">${ICON.rec}Record</button><button type="button" id="rv_play" class="alt" disabled>${ICON.play}Play</button><button type="submit" id="rv_save" disabled>${ICON.check}Save &amp; Submit</button><button type="button" class="alt" id="cl">${IC.cancel}</button></div><p class="small">New videos start as OnReview. Publish them after review.</p>`}</form>`;
+ rv.showModal();$('#cl').onclick=()=>{stopRec(true);closeRv()};if(v)$('#vdl').onclick=()=>{closeRv();delVideo(id)};if(v&&locked(v)){lockField('#vf [name=status]',false);lockField('#vf [name=active]',false)}
+ if(!v)setupRecorder(maxMB);
+ $('#vf').onsubmit=async e=>{e.preventDefault();const f=e.target,btn=f.querySelector('[type=submit]');btn.disabled=true;
+  try{if(v)await put('/api/admin/program-videos/'+id,{version:v.version,title:f.title.value,status:f.status.value,active:f.active.checked});
+   else{const fd=new FormData();fd.append('title',f.title.value);fd.append('video',VR.blob,'program.webm');await api('/api/admin/program-videos',{method:'POST',body:fd})}
+   stopRec(true);toast('Video saved');closeRv();await load()}catch(err){show($('#rvMsg'),err.message);btn.disabled=false;await fail(err)}}}
+function stopRec(discard){if(VR.rec&&VR.rec.state==='recording'){VR.discard=discard;VR.rec.stop()}VR.stream&&VR.stream.getTracks().forEach(t=>t.stop())}
+function setupRecorder(maxMB){VR={blob:null};const v=$('#rv_v'),rec=$('#rv_rec'),play=$('#rv_play'),save=$('#rv_save');let tick,t0,size=0,chunks=[],recording=false;
+ const mm=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0'),mb=b=>(b/1048576).toFixed(1);
+ const bps=Math.round(Math.min(2.5e6,Math.max(500e3,maxMB*1048576*8*0.9/300)));
+ async function start(){if(VR.blob)URL.revokeObjectURL(v.src);VR.blob=null;play.disabled=save.disabled=true;v.removeAttribute('src');v.controls=false;chunks=[];size=0;$('#rvMsg').innerHTML='';
+  try{const m=await getMediaStream();VR.stream=m.stream;watchStream(VR.stream,msg=>{if(recording){VR.rec.stop();show($('#rvMsg'),msg)}});if(m.note)show($('#rvMsg'),m.note,true)}catch(e){return show($('#rvMsg'),e.message)}
+  v.srcObject=VR.stream;v.muted=true;v.play().catch(()=>{});$('#rv_ph').hidden=true;
+  try{VR.rec=new MediaRecorder(VR.stream,{videoBitsPerSecond:bps-48000,audioBitsPerSecond:48000})}catch(e){VR.rec=new MediaRecorder(VR.stream)}
+  const r=VR.rec;VR.discard=false;
+  r.ondataavailable=e=>{if(!e.data.size)return;chunks.push(e.data);size+=e.data.size;$('#rv_s').textContent=mb(size)+' / '+maxMB+' MB';if(size>=maxMB*1048576*0.96&&r.state==='recording'){toast('Size limit reached — recording stopped');r.stop()}};
+  r.onstop=()=>{clearInterval(tick);VR.stream.getTracks().forEach(t=>t.stop());v.srcObject=null;v.muted=false;recording=false;rec.innerHTML=ICON.rec+'Record';if(VR.discard)return;
+   const b=new Blob(chunks,{type:r.mimeType||'video/webm'});if(b.size>maxMB*1048576)return show($('#rvMsg'),'Video is larger than '+maxMB+' MB. Record a shorter video.');
+   VR.blob=b;v.src=URL.createObjectURL(b);v.controls=true;play.disabled=save.disabled=false;$('#rv_s').textContent=mb(b.size)+' / '+maxMB+' MB'};
+  r.start(1000);t0=Date.now();recording=true;rec.innerHTML=ICON.rec+'Stop';tick=setInterval(()=>{$('#rv_t').textContent=mm((Date.now()-t0)/1000)},250)}
+ rec.onclick=()=>recording?VR.rec.stop():start();
+ play.onclick=()=>{v.currentTime=0;v.play().catch(()=>{})}}
+async function delVideo(id){const v=data.programVideos.find(x=>x.id===id);if(!confirm(`Delete "${v.title}"? The video file is removed permanently.`))return;try{await api('/api/admin/program-videos/'+id,{method:'DELETE'});toast('Video deleted');await load()}catch(e){toast(e.message,false)}}
+// ----- admin users -----
+function editAdmin(id,newRole){const a=id?data.admins.find(x=>x.id===id):{name:'',phone:'',email:'',status:'active',role:newRole==='super'?'super':'admin',version:0};
+ rvBody.innerHTML=`<h2>${id?'Update':'Add'} ${!id&&a.role==='super'?'super admin':'admin'}</h2><div id="rvMsg"></div><form id="adf"><input type="hidden" name="version" value="${a.version}">
+ <div class="row"><div><label>Name</label><input name="name" value="${esc(a.name)}" required></div><div><label>Phone</label><input name="phone" value="${esc(a.phone)}" required></div></div>
+ <div class="row"><div><label>Email</label><input name="email" type="email" value="${esc(a.email)}" required></div>${id?`<div><label>Status</label><select name="status"><option value="active" ${a.status==='active'?'selected':''}>active</option><option value="inactive" ${a.status==='inactive'?'selected':''}>inactive</option></select></div>`:'<div></div>'}</div><br>
+ <label>Role</label><select name="role"><option value="admin" ${(a.role||'super')==='admin'?'selected':''}>Admin: registers schools and reviews works</option><option value="super" ${(a.role||'super')==='super'?'selected':''}>Super admin: full access</option></select><br><br>
+ <button type="submit">${IC.save}</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;if(id&&(locked(a)||a.id===ME.id))lockField('#adf [name=status]');
+ $('#adf').onsubmit=async e=>{e.preventDefault();const o=Object.fromEntries(new FormData(e.target));try{const r=id?await put('/api/admin/admins/'+id,o):await post('/api/admin/admins',o);toast('Admin saved');closeRv();if(r.self)return location.href='/';await load()}catch(err){show($('#rvMsg'),err.message);await fail(err)}}}
+document.addEventListener('submit',async e=>{
+ if(e.target.id==='tf'){e.preventDefault();try{await put('/api/admin/templates/'+S.tpl,tplForm());toast('Template saved');custom.dataset.tab='';await load()}catch(err){await fail(err)}}
+ if(e.target.id==='mf'){e.preventDefault();try{const d=await post('/api/admin/send-manual',{principalIds:[...S.msel]});toast('Request sent to '+d.sent+' school(s)');S.msel.clear();S.mpage=1;custom.dataset.tab='';await load()}catch(err){toast(err.message,false)}}});
+const setSide=c=>{adm.classList.toggle('closed',c);localStorage.setItem('sideOpen',c?'':'1')};
+sideX.onclick=()=>setSide(true);menuBtn.innerHTML=ICON.menu+'Menu';menuBtn.onclick=()=>setSide(!adm.classList.contains('closed'));setSide(localStorage.getItem('sideOpen')==='');
+purge.onclick=e=>{e.preventDefault();
+ rvBody.innerHTML=`<h2 style="color:#c00">Delete all data</h2><div class="msg err">This permanently deletes everything: schools, insights, videos, payments, funds, admins, configs, plans, email templates, emails, logs and uploaded files. The system is then rebuilt from the starting data in the seed folder and you will be logged out. It cannot be undone.</div><div id="rvMsg"></div>
+ <form id="pgf"><label>Type DELETE to confirm</label><input name="confirm" autocomplete="off" required>
+ <label>OTP to confirm</label><input name="otp" class="otp" maxlength="4" inputmode="numeric" required style="max-width:180px;font-size:20px"> <button type="button" class="alt btn-sm" data-fundotp>Send code</button><br><br>
+ <button type="submit" class="redbtn">Delete everything</button> <button type="button" class="alt" id="cl">${IC.cancel}</button></form>`;
+ rv.showModal();$('#cl').onclick=closeRv;
+ $('#pgf').onsubmit=async ev=>{ev.preventDefault();try{await post('/api/admin/purge',Object.fromEntries(new FormData(ev.target)));flash('All data deleted. Log in again.');location.href='/'}catch(err){show($('#rvMsg'),err.message)}}};
+closeBtn.onclick=()=>{location.href='/'};
+load().then(()=>{if(S.tab==="health")loadHealth()});
+</script></body></html>

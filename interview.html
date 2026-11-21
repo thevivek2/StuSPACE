@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Give Insights · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="rec">
+<main><div class="card"><h1>Give Insights</h1>
+<div id="state" class="center-box loader"><div class="spin"></div><span>Checking your insights request…</span></div>
+<div id="work" hidden style="display:none;flex:1;min-height:0;flex-direction:column">
+<div id="note"></div>
+<div class="vbox"><video id="v" playsinline></video><div class="vph" id="vph">Press Record to start your video</div></div>
+<div class="rmeta"><span id="timer"></span><span id="sizeTxt"></span></div>
+<div class="rbar"><button id="recBtn" class="recbtn"></button><button id="playBtn" class="alt" disabled></button><button id="save" disabled></button><span id="out" style="flex:1;min-width:0"></span></div></div>
+<div id="out2"></div></div></main>
+<script src="common.js"></script><script>
+if(EMBED&&parent.ovSize)parent.ovSize('tall');
+const L={rec:ICON.rec+'Record',stop:ICON.rec+'Stop',play:ICON.play+'Play',save:ICON.check+'Save &amp; Submit'};
+let rec,chunks=[],blob,stream,dur=0,size=0,tick,t0,question='',MAXMB=5,MAXS=300,recording=false;
+const mmss=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
+const mb=b=>(b/1048576).toFixed(1);
+recBtn.innerHTML=L.rec;playBtn.innerHTML=L.play;save.innerHTML=L.save;
+function login(){location.href='/login.html?next=/interview.html'}
+(async()=>{
+ const [m,site]=await Promise.all([api('/api/auth/me').catch(()=>null),api('/api/site').catch(()=>null)]);
+ if(!m)return login();
+ if(site){MAXMB=site.maxVideoMB;MAXS=site.maxVideoSeconds}
+ sizeTxt.textContent='Max size '+MAXMB+' MB';timer.textContent='Max length '+mmss(MAXS);
+ state.hidden=true;state.style.display='none';
+ if(!m.request){ // validity check failed: no request email was sent
+  out2.innerHTML=`<div class="center-box"><p class="wel"><b>Welcome, ${esc(m.name)} of ${esc(m.school)}.</b> Thank you for being part of the program.</p><div class="no-note">We could not find an insights request email for your school. You can give your insights once we send you the request by email. Please check back after you receive it.</div></div>`;return}
+ question=m.request.question||'';
+ note.innerHTML=`<p class="wel"><b>Welcome, ${esc(m.name)} of ${esc(m.school)}.</b> Thank you for being part of the program.</p><div class="ok-note">✔ <b>Congratulations!</b> Your insights request was sent to ${esc(m.email)} on ${esc(new Date(m.request.at).toLocaleDateString())}. Now give your actual insights${question?': “'+esc(question)+'”':'.'}</div>`;
+ work.hidden=false;work.style.display='flex'})();
+function setBlob(b,d){blob=b;dur=d;playBtn.disabled=save.disabled=!b}
+function fresh(){ // Record always starts a fresh recording
+ if(blob){URL.revokeObjectURL(v.src)}setBlob(null,0);v.removeAttribute('src');v.load();v.controls=false;chunks=[];size=0;out.innerHTML=''}
+function bitrate(){return Math.round(Math.min(2.5e6,Math.max(250e3,MAXMB*1048576*8*0.9/90)))}
+async function start(){fresh();
+ try{const m=await getMediaStream();stream=m.stream;watchStream(stream,msg=>{if(recording){stop();show(out,msg)}});if(m.note)show(out,m.note,true)}catch(e){return show(out,e.message)}
+ v.srcObject=stream;v.muted=true;v.play().catch(()=>{});vph.hidden=true;
+ const o={videoBitsPerSecond:bitrate()-48000,audioBitsPerSecond:48000};
+ try{rec=new MediaRecorder(stream,o)}catch(e){rec=new MediaRecorder(stream)}
+ rec.ondataavailable=e=>{if(!e.data.size)return;chunks.push(e.data);size+=e.data.size;sizeTxt.textContent=mb(size)+' / '+MAXMB+' MB';if(size>=MAXMB*1048576*0.96&&rec.state==='recording'){toast('Size limit reached — recording stopped');stop()}};
+ rec.onstop=()=>{clearInterval(tick);const el=(Date.now()-t0)/1000;stream.getTracks().forEach(t=>t.stop());v.srcObject=null;v.muted=false;
+  const b=new Blob(chunks,{type:rec.mimeType||'video/webm'});recording=false;recBtn.innerHTML=L.rec;
+  if(b.size>MAXMB*1048576){show(out,'Video is larger than '+MAXMB+' MB. Record a shorter video.');timer.textContent='';return}
+  v.src=URL.createObjectURL(b);v.controls=true;timer.textContent='Recorded '+mmss(el);sizeTxt.textContent=mb(b.size)+' / '+MAXMB+' MB';setBlob(b,el)};
+ rec.start(1000);t0=Date.now();recording=true;recBtn.innerHTML=L.stop;playBtn.disabled=save.disabled=true;
+ tick=setInterval(()=>{const el=(Date.now()-t0)/1000;timer.textContent=mmss(el)+' / '+mmss(MAXS);if(el>=MAXS&&rec.state==='recording'){toast('Length limit reached — recording stopped');stop()}},250)}
+function stop(){if(rec&&rec.state==='recording')rec.stop()}
+recBtn.onclick=()=>recording?stop():start();
+playBtn.onclick=()=>{if(blob){v.currentTime=0;v.play().catch(()=>{})}};
+save.onclick=async()=>{if(!blob)return;save.disabled=recBtn.disabled=playBtn.disabled=true;save.textContent='Uploading…';const fd=new FormData();fd.append('question',question);fd.append('duration',dur);
+ fd.append('video',blob,'insight.webm');
+ try{await api('/api/insights',{method:'POST',body:fd});await post('/api/auth/logout').catch(()=>{});goHome('Insight submitted successfully! It is OnReview and will be published once approved.',true,'give')}
+ catch(e){if(e.status===401){flash('Session expired — please log in again.',false);return login()}show(out,e.message);toast('Submit failed: '+e.message,false);recBtn.disabled=playBtn.disabled=save.disabled=false;save.innerHTML=L.save}};
+addEventListener('beforeunload',()=>{stream&&stream.getTracks().forEach(t=>t.stop())});
+</script></body></html>

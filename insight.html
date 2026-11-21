@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Insight · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body>
+<main><p><a href="/insights.html" style="color:#fff">← All insights</a></p><div class="card" id="c"><div class="loader"><div class="spin"></div></div></div></main>
+<script src="common.js"></script><script>
+const id=new URLSearchParams(location.search).get('id');
+api('/api/insights/'+encodeURIComponent(id)).then(i=>{const p=i.principal;
+c.innerHTML=`<video controls autoplay src="${esc(i.video)}"></video>
+<h1 style="margin-top:16px">${esc(p.school.name)} ${i.status!=='Published'?`<span class="badge ${i.status}">${i.status}</span>`:''}</h1>
+${i.question?`<p class="tag">Question</p><p style="font-size:18px;margin-top:0">“${esc(i.question)}”</p>`:''}
+${i.notes?`<p class="tag">Notes</p><p>${esc(i.notes)}</p>`:''}
+<p class="small">Recorded ${fmt(i.at)}${i.duration?' · Length '+Math.floor(i.duration/60)+':'+String(i.duration%60).padStart(2,'0'):''}</p><hr>
+<div style="display:flex;gap:14px;align-items:center">${p.photo?`<img class="avatar" src="${esc(p.photo)}">`:`<div class="avatar">${esc(initials(p.name))}</div>`}
+<div><b>${esc(p.name)}</b><br>${esc(p.school.name)} · ${esc(p.school.address)}<br><small>${esc(p.address)}</small>${p.linkedin?`<br><a href="${esc(p.linkedin)}" target="_blank" rel="noopener">LinkedIn ↗</a>`:''}</div></div>`;
+}).catch(e=>c.textContent=e.message);
+</script></body></html>

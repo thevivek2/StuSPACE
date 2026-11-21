@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Admin login · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="lg">
+<main><div class="card narrow"><h1>Admin login</h1><p class="small">Enter your phone number or email, then the one-time code.</p><div id="out"></div>
+<label>Phone or email</label><input id="idf" autocomplete="username" autofocus>
+<div id="step2" style="display:none"><label>One-time code</label><input id="otp" class="otp" maxlength="4" inputmode="numeric" autocomplete="one-time-code"><p class="small"><a href="#" id="chg">change phone/email</a></p></div><br>
+<button id="btn">Send OTP</button></div></main>
+<script src="common.js"></script><script>
+if(EMBED&&parent.ovSize)parent.ovSize('login');
+api('/api/admin/me').then(a=>{if(a.admin)top.location.replace('/admin.html')});
+let sent=false;
+function reset(){sent=false;step2.style.display='none';idf.disabled=false;btn.textContent='Send OTP';otp.value='';idf.focus()}
+btn.onclick=async()=>{out.innerHTML='';btn.disabled=true;try{
+ if(!idf.value.trim()){show(out,'Enter your phone or email');return}
+ if(!sent){await post('/api/admin/request',{identifier:idf.value});sent=true;idf.disabled=true;step2.style.display='block';btn.textContent='Verify & login';otp.focus();return}
+ if(!/^\d{4}$/.test(otp.value)){show(out,'Enter the 4-digit code');return}
+ await post('/api/admin/login',{identifier:idf.value,otp:otp.value});top.location.href='/admin.html'
+}catch(e){show(out,e.message)}finally{btn.disabled=false}};
+chg.onclick=e=>{e.preventDefault();reset()};
+otp.oninput=()=>{otp.value=otp.value.replace(/\D/g,'');if(otp.value.length===4)btn.click()};
+idf.onkeydown=otp.onkeydown=e=>{if(e.key==='Enter')btn.click()};
+</script></body></html>

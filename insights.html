@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Insights · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body>
+<main><div class="pagehead"><h1>Insights</h1><p>Published video insights from schools, newest first.</p></div>
+<div class="grid" id="g"><div class="loader" style="color:#bbb"><div class="spin"></div></div></div><p id="empty" style="color:#bbb;display:none">No published insights yet.</p></main>
+<script src="common.js"></script><script>
+api('/api/insights').then(l=>{g.innerHTML=l.map(i=>insightCard(i)).join('');empty.style.display=l.length?'none':'block'});
+</script></body></html>

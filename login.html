@@ -1,0 +1,22 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Give Insights · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="lg">
+<main><div class="card narrow"><h1>Give Insights</h1><p class="small">Verify with the email you registered with. We send a one-time code to it.</p><div id="out"></div>
+<label>Email</label><input id="idf" type="email" autocomplete="username" autofocus>
+<div id="step2" style="display:none"><label>One-time code</label><input id="otp" class="otp" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="one-time-code"><p class="small"><a href="#" id="chg">change email</a></p></div><br>
+<button id="btn">Send OTP</button> <a href="/register.html" class="small" id="reg">Not registered?</a></div></main>
+<script src="common.js"></script><script>
+if(EMBED&&parent.ovSize)parent.ovSize('login');
+reg.onclick=e=>{if(EMBED){e.preventDefault();parent.closeOverlay&&parent.closeOverlay();parent.openPanel&&parent.openPanel('register')}};
+const next=new URLSearchParams(location.search).get('next');const dest=next&&next.startsWith('/')&&!next.startsWith('//')?next:'/interview.html';
+api('/api/auth/me').then(m=>{if(m)location.replace(dest)}).catch(()=>{});
+let sent=false;
+function reset(){sent=false;step2.style.display='none';idf.disabled=false;btn.textContent='Send OTP';otp.value='';idf.focus()}
+btn.onclick=async()=>{out.innerHTML='';btn.disabled=true;try{
+ if(!idf.value.trim()){show(out,'Enter your email');return}
+ if(!sent){await post('/api/auth/request',{identifier:idf.value});sent=true;idf.disabled=true;step2.style.display='block';btn.textContent='Verify & login';otp.focus();show(out,'Enter the one-time code to continue.',true);return}
+ if(!/^\d{4}$/.test(otp.value)){show(out,'Enter the 4-digit code');return}
+ await post('/api/auth/login',{identifier:idf.value,otp:otp.value});location.href=dest
+}catch(e){show(out,e.message)}finally{btn.disabled=false}};
+chg.onclick=e=>{e.preventDefault();reset()};
+otp.oninput=()=>{otp.value=otp.value.replace(/\D/g,'');if(otp.value.length===4)btn.click()};
+idf.onkeydown=otp.onkeydown=e=>{if(e.key==='Enter')btn.click()};
+</script></body></html>

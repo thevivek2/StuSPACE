@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Camera test · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body>
+<main><div class="card"><h1>Camera test</h1><p class="small">Shows what this browser can see and tries to open the camera.</p>
+<div id="info"></div><p><button id="go">Test camera and microphone</button></p><div id="out"></div><video id="v" autoplay muted playsinline style="max-width:360px;display:none"></video></div></main>
+<script src="common.js"></script><script>
+(async()=>{const rows=[['Browser',navigator.userAgent],['Secure context (https or localhost)',String(window.isSecureContext)],['Inside a frame',String(window.parent!==window)],['Address',location.origin]];
+ let devs=[];try{devs=await navigator.mediaDevices.enumerateDevices()}catch(e){rows.push(['enumerateDevices error',e.name+': '+e.message])}
+ for(const k of ['videoinput','audioinput']){const l=devs.filter(d=>d.kind===k);rows.push([k==='videoinput'?'Cameras seen':'Microphones seen',l.length+(l.length?' · '+l.map(d=>d.label||'(name hidden until allowed)').join(', '):'')])}
+ info.innerHTML='<table>'+rows.map(r=>'<tr><td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td></tr>').join('')+'</table>'})();
+go.onclick=async()=>{out.innerHTML='';try{const m=await getMediaStream();v.srcObject=m.stream;v.style.display='block';show(out,'Works. '+(m.note||'Camera and microphone are available.'),true)}catch(e){show(out,e.message)}};
+</script></body></html>

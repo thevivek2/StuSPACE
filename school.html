@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>School · StuSPACE</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"></head><body class="dir">
+<main><p><a href="/principals.html" class="btn alt" style="padding:5px 12px">← Directory</a></p><div class="card" id="c"><div class="loader"><div class="spin"></div></div></div></main>
+<script src="common.js"></script><script>
+const id=new URLSearchParams(location.search).get('id');
+api('/api/principals/'+encodeURIComponent(id)).then(p=>{const s=p.school;
+c.innerHTML=`<div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${p.photo?`<img class="avatar" style="width:64px;height:64px" src="${esc(p.photo)}">`:`<div class="avatar" style="width:64px;height:64px">${esc(initials(p.name))}</div>`}
+<div><h1 style="margin:0;font-size:22px">${esc(s.name)}</h1><span class="badge ${p.planPrice>0?'Paid':'Free'}">${esc(p.plan)}</span> <span class="badge ${p.status}">${esc(p.status.replace('_',' '))}</span></div></div>
+<dl class="kv"><dt>Principal</dt><dd>${esc(p.name)}</dd><dt>School address</dt><dd>${esc(s.address)}</dd>${s.board?`<dt>Board / type</dt><dd>${esc(s.board)}</dd>`:''}${s.students?`<dt>Students</dt><dd>${esc(s.students)}</dd>`:''}
+<dt>Home address</dt><dd>${esc(p.address)}</dd><dt>Email</dt><dd>${esc(p.email)}</dd><dt>Phone</dt><dd>${esc(p.phone)}</dd>${p.linkedin?`<dt>LinkedIn</dt><dd><a href="${esc(p.linkedin)}" target="_blank" rel="noopener">${esc(p.linkedin)}</a></dd>`:''}<dt>Registered</dt><dd>${fmt(p.createdAt)}</dd></dl>`}).catch(e=>c.textContent=e.message);
+</script></body></html>
